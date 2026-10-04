@@ -40,6 +40,11 @@ df = df.rename(columns={
     "shipping_date_dateorders": "fecha_envio",
 })
 
+# 3b. Quitar espacios sobrantes en los textos (las consultas mostraron 'Cameras ' y 'South of  USA ')
+for columna in df.select_dtypes(include="object").columns:
+    df[columna] = df[columna].str.strip().str.replace(r"\s+", " ", regex=True)
+
+
 # 4. Redondear los montos a 2 decimales (venían con ruido, ej: 59.99000168)
 columnas_monto = ["sales", "order_item_total", "order_profit_per_order",
                   "order_item_discount", "product_price"]
