@@ -80,4 +80,14 @@ Responde dos preguntas: **¿dónde fallamos en las entregas?** y **¿dónde se g
 
 - **Cambio de estructura desde noviembre de 2017:** cada pedido pasa de ~3 líneas a 1. Las ventas mensuales bajan por eso, no por menos pedidos (~2.100 al mes). La tendencia se analiza hasta octubre de 2017.
 - **Estados inconsistentes:** pedidos en `PENDING`, `PROCESSING` y `PENDING_PAYMENT` tienen estado de entrega y días reales, lo que no es lógico. El % de retraso es similar entre estados, así que no se excluyen.
--
+- **Dimensiones tipo 1:** si un cliente o producto cambió de atributos, se guarda el último valor.
+- **Categorías pequeñas:** las que tienen pocas líneas (por ejemplo Golf Bags & Carts con 61) no permiten conclusiones.
+- Los hallazgos son descriptivos: muestran asociaciones, no causas.
+
+## Cómo reproducirlo
+
+1. Clonar el repositorio y crear el entorno: `python -m venv .venv`, activarlo e instalar con `python -m pip install -r requirements.txt`.
+2. Descargar el CSV desde Kaggle y dejarlo en `data/raw/DataCoSupplyChainDataset.csv`.
+3. Crear la base `supply_chain` en PostgreSQL y copiar `.env.example` como `.env` con tus credenciales.
+4. Ejecutar `python scripts/02_limpiar.py` y luego `python scripts/03_cargar_postgres.py`.
+5. Ejecutar `sql/01_modelo_estrella.sql` y después `sql/02_consultas_negocio.sql` en PostgreSQL.
