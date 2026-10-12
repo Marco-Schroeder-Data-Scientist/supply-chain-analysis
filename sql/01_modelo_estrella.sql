@@ -8,10 +8,10 @@ CREATE SCHEMA dw;
 -- DIMENSIÓN CLIENTE: un registro por cliente.
 -- Si un cliente aparece con datos distintos, se usa MAX() para quedarse con uno.
 CREATE TABLE dw.dim_cliente AS
-SELECT customer_id      AS cliente_id,
+SELECT customer_id AS cliente_id,
        MAX(customer_segment) AS segmento,
-       MAX(customer_city)    AS ciudad,
-       MAX(customer_state)   AS estado,
+       MAX(customer_city) AS ciudad,
+       MAX(customer_state) AS estado,
        MAX(customer_country) AS pais
 FROM staging.pedidos
 GROUP BY customer_id;
@@ -19,10 +19,10 @@ GROUP BY customer_id;
 -- DIMENSIÓN PRODUCTO: un registro por producto
 CREATE TABLE dw.dim_producto AS
 SELECT product_card_id  AS producto_id,
-       MAX(product_name)    AS producto,
-       MAX(category_name)   AS categoria,
+       MAX(product_name) AS producto,
+       MAX(category_name) AS categoria,
        MAX(department_name) AS departamento,
-       MAX(product_price)   AS precio
+       MAX(product_price) AS precio
 FROM staging.pedidos
 GROUP BY product_card_id;
 
@@ -51,22 +51,22 @@ FROM generate_series('2015-01-01'::date, '2018-12-31'::date, '1 day') AS d;
 
 -- TABLA DE HECHOS: medidas del negocio + claves hacia las dimensiones
 CREATE TABLE dw.fact_pedidos AS
-SELECT p.order_item_id            AS linea_id,
-       p.order_id                 AS pedido_id,
-       p.customer_id              AS cliente_id,
-       p.product_card_id          AS producto_id,
+SELECT p.order_item_id AS linea_id,
+       p.order_id AS pedido_id,
+       p.customer_id AS cliente_id,
+       p.product_card_id AS producto_id,
        g.geografia_id,
        e.envio_id,
-       p.fecha_pedido::date       AS fecha_pedido,
-       p.fecha_envio::date        AS fecha_envio,
-       p.type                     AS tipo_pago,
-       p.order_status             AS estado_pedido,
-       p.delivery_status          AS estado_entrega,
-       p.order_item_quantity      AS cantidad,
-       ROUND(p.sales::numeric, 2)                  AS ventas_brutas,
-       ROUND(p.order_item_discount::numeric, 2)    AS descuento,
+       p.fecha_pedido::date AS fecha_pedido,
+       p.fecha_envio::date AS fecha_envio,
+       p.type AS tipo_pago,
+       p.order_status AS estado_pedido,
+       p.delivery_status AS estado_entrega,
+       p.order_item_quantity AS cantidad,
+       ROUND(p.sales::numeric, 2) AS ventas_brutas,
+       ROUND(p.order_item_discount::numeric, 2) AS descuento,
        p.descuento_pct,
-       ROUND(p.order_item_total::numeric, 2)       AS ventas_netas,
+       ROUND(p.order_item_total::numeric, 2) AS ventas_netas,
        ROUND(p.order_profit_per_order::numeric, 2) AS ganancia,
        p.margen,
        p.dias_reales, p.dias_programados, p.dias_retraso,

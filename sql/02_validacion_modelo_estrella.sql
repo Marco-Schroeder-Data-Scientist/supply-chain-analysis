@@ -1,119 +1,187 @@
--- CONSULTAS DE NEGOCIO sobre el modelo estrella (esquema dw)
--- Regla: los indicadores de entrega excluyen los pedidos cancelados (es_cancelado = 0),
--- porque esas entregas no se realizaron (ver EDA, celda 7).
--- Todos los indicadores se calculan por línea de pedido.
+-- ============================================================
+-- VALIDACIÓN DEL MODELO ESTRELLA
+-- Proyecto: Supply Chain Analysis
+--
+-- Objetivo:
+-- Validar volumen, unicidad, integridad referencial,
+-- conciliación financiera y consistencia de fechas.
+--
+-- IMPORTANTE:
+-- Este archivo contiene únicamente consultas de lectura.
+-- No crea, elimina ni modifica tablas o registros.
+-- Ejecutar cada bloque por separado en PostgreSQL.
+-- ============================================================
 
 
--- 1. ¿Cómo está el negocio en general?
-SELECT COUNT(*) AS lineas,
-       COUNT(DISTINCT pedido_id) AS pedidos,
-       ROUND(SUM(ventas_netas)) AS ventas_netas,
-       ROUND(SUM(ganancia)) AS ganancia,
-       ROUND(SUM(ganancia) / SUM(ventas_netas) * 100, 1) AS margen_pct,
-       ROUND(AVG(es_tardio) * 100, 1) AS pct_tardias
+-- ============================================================
+-- BLOQUE 1. VOLUMEN DE TABLAS
+-- Comprobar que existen las tablas y revisar sus registros.
+-- ============================================================
+
+SELECT 'staging.pedidos' AS tabla, COUNT(*) AS filas
+FROM staging.pedidos
+
+UNION ALL
+
+SELECT 'dw.fact_pedidos', COUNT(*)
 FROM dw.fact_pedidos
-WHERE es_cancelado = 0;
+
+UNION ALL
+
+SELECT 'dw.dim_cliente', COUNT(*)
+FROM dw.dim_cliente
+
+UNION ALL
+
+SELECT 'dw.dim_producto', COUNT(*)
+FROM dw.dim_producto
+
+UNION ALL
+
+SELECT 'dw.dim_geografia', COUNT(*)
+FROM dw.dim_geografia
+
+UNION ALL
+
+SELECT 'dw.dim_envio', COUNT(*)
+FROM dw.dim_envio
+
+UNION ALL
+
+SELECT 'dw.dim_fecha', COUNT(*)
+FROM dw.dim_fecha
+
+ORDER BY tabla;
 
 
--- 2. ¿Qué modo de envío tiene más entregas tardías?
-SELECT e.modo_envio,
-       COUNT(*) AS lineas,
-       ROUND(AVG(f.es_tardio) * 100, 1) AS pct_tardias,
-       ROUND(AVG(f.dias_retraso), 2) AS retraso_promedio_dias
-FROM dw.fact_pedidos AS f
-JOIN dw.dim_envio AS e ON e.envio_id = f.envio_id
-WHERE f.es_cancelado = 0
-GROUP BY e.modo_envio
-ORDER BY pct_tardias DESC;
+-- ============================================================
+-- BLOQUE 2. UNICIDAD DE LA CLAVE DE LA TABLA DE HECHOS
+-- Verificar que linea_id identifica cada registro.
+-- ============================================================
+
+SELECT
+    COUNT(*) AS filas,
+    COUNT(linea_id) AS lineas_no_nulas,
+    COUNT(DISTINCT linea_id) AS lineas_unicas,
+    COUNT(*) - COUNT(DISTINCT linea_id) AS posibles_duplicados
+FROM dw.fact_pedidos;
 
 
--- 3. ¿Qué regiones tienen más entregas tardías?
-SELECT g.mercado,
-       g.region,
-       COUNT(*) AS lineas,
-       ROUND(AVG(f.es_tardio) * 100, 1) AS pct_tardias
-FROM dw.fact_pedidos AS f
-JOIN dw.dim_geografia AS g ON g.geografia_id = f.geografia_id
-WHERE f.es_cancelado = 0
-GROUP BY g.mercado, g.region
-ORDER BY pct_tardias DESC;
+-- ============================================================
+-- BLOQUE 3. CONCILIACIÓN FINANCIERA
+-- Comparar staging con la tabla de hechos.
+-- Los totales deben coincidir.
+-- ============================================================
+
+SELECT
+    'staging.pedidos' AS origen,
+    COUNT(*) AS filas,
+    SUM(order_item_quantity) AS unidades,
+    ROUND(SUM(sales)::numeric, 2) AS ventas_brutas,
+    ROUND(SUM(order_item_total)::numeric, 2) AS ventas_netas,
+    ROUND(SUM(order_profit_per_order)::numeric, 2) AS ganancia
+FROM staging.pedidos
+
+UNION ALL
+
+SELECT
+    'dw.fact_pedidos',
+    COUNT(*),
+    SUM(cantidad),
+    ROUND(SUM(ventas_brutas)::numeric, 2),
+    ROUND(SUM(ventas_netas)::numeric, 2),
+    ROUND(SUM(ganancia)::numeric, 2)
+FROM dw.fact_pedidos;
 
 
--- 4. ¿Qué categorías de producto tienen más entregas tardías?
-SELECT p.categoria,
-       COUNT(*) AS lineas,
-       ROUND(AVG(f.es_tardio) * 100, 1) AS pct_tardias
-FROM dw.fact_pedidos AS f
-JOIN dw.dim_producto AS p ON p.producto_id = f.producto_id
-WHERE f.es_cancelado = 0
-GROUP BY p.categoria
-ORDER BY pct_tardias DESC;
+-- ============================================================
+-- BLOQUE 4. INTEGRIDAD REFERENCIAL
+-- Buscar líneas sin correspondencia en las dimensiones.
+-- Se espera cero en todas las comprobaciones.
+-- ============================================================
+
+SELECT
+    'dim_cliente' AS dimension,
+    COUNT(*) AS registros_sin_correspondencia
+FROM dw.fact_pedidos f
+LEFT JOIN dw.dim_cliente d
+    ON d.cliente_id = f.cliente_id
+WHERE d.cliente_id IS NULL
+
+UNION ALL
+
+SELECT
+    'dim_producto',
+    COUNT(*)
+FROM dw.fact_pedidos f
+LEFT JOIN dw.dim_producto d
+    ON d.producto_id = f.producto_id
+WHERE d.producto_id IS NULL
+
+UNION ALL
+
+SELECT
+    'dim_geografia',
+    COUNT(*)
+FROM dw.fact_pedidos f
+LEFT JOIN dw.dim_geografia d
+    ON d.geografia_id = f.geografia_id
+WHERE d.geografia_id IS NULL
+
+UNION ALL
+
+SELECT
+    'dim_envio',
+    COUNT(*)
+FROM dw.fact_pedidos f
+LEFT JOIN dw.dim_envio d
+    ON d.envio_id = f.envio_id
+WHERE d.envio_id IS NULL
+
+UNION ALL
+
+SELECT
+    'dim_fecha_pedido',
+    COUNT(*)
+FROM dw.fact_pedidos f
+LEFT JOIN dw.dim_fecha d
+    ON d.fecha = f.fecha_pedido
+WHERE d.fecha IS NULL;
 
 
--- 5. ¿Cómo evolucionan ventas, margen y retrasos mes a mes?
-SELECT d.anio_mes,
-       ROUND(SUM(f.ventas_netas)) AS ventas_netas,
-       ROUND(SUM(f.ganancia) / SUM(f.ventas_netas) * 100, 1) AS margen_pct,
-       ROUND(AVG(f.es_tardio) * 100, 1) AS pct_tardias
-FROM dw.fact_pedidos AS f
-JOIN dw.dim_fecha AS d ON d.fecha = f.fecha_pedido
-WHERE f.es_cancelado = 0
-GROUP BY d.anio_mes
-ORDER BY d.anio_mes;
+-- ============================================================
+-- BLOQUE 5. CONSISTENCIA DE FECHAS
+-- Revisar rango temporal, fechas ausentes y envíos anteriores
+-- a la fecha del pedido.
+-- ============================================================
+
+SELECT
+    MIN(fecha_pedido) AS primer_pedido,
+    MAX(fecha_pedido) AS ultimo_pedido,
+    COUNT(*) FILTER (
+        WHERE fecha_pedido IS NULL
+    ) AS pedidos_sin_fecha,
+    COUNT(*) FILTER (
+        WHERE fecha_envio IS NULL
+    ) AS registros_sin_fecha_envio,
+    COUNT(*) FILTER (
+        WHERE fecha_envio < fecha_pedido
+    ) AS envios_anteriores_al_pedido
+FROM dw.fact_pedidos;
 
 
--- 6. ¿Los retrasos afectan la rentabilidad?
--- Se compara el margen de las entregas a tiempo contra las tardías.
-SELECT CASE WHEN es_tardio = 1 THEN 'Tardía' ELSE 'A tiempo' END AS entrega,
-       COUNT(*) AS lineas,
-       ROUND(SUM(ganancia) / SUM(ventas_netas) * 100, 1) AS margen_pct,
-       ROUND(AVG(es_perdida) * 100, 1) AS pct_lineas_con_perdida
+-- ============================================================
+-- BLOQUE 6. DISTRIBUCIÓN DE ESTADOS
+-- Cuantificar los estados para definir criterios de negocio.
+-- No se excluye ningún estado.
+-- ============================================================
+
+SELECT
+    estado_pedido,
+    COUNT(*) AS lineas,
+    COUNT(DISTINCT pedido_id) AS pedidos,
+    ROUND(SUM(ventas_netas)::numeric, 2) AS ventas_netas,
+    ROUND(SUM(ganancia)::numeric, 2) AS ganancia
 FROM dw.fact_pedidos
-WHERE es_cancelado = 0
-GROUP BY es_tardio;
-
-
--- 7. ¿Los descuentos altos destruyen margen sin vender más?
--- Se agrupan las líneas por tramo de descuento.
-WITH tramos AS (
-    SELECT CASE
-             WHEN descuento_pct = 0 THEN '1. Sin descuento'
-             WHEN descuento_pct <= 5 THEN '2. Hasta 5%'
-             WHEN descuento_pct <= 10 THEN '3. 5% a 10%'
-             WHEN descuento_pct <= 20 THEN '4. 10% a 20%'
-             ELSE '5. Más de 20%'
-           END AS tramo_descuento,
-           cantidad, ventas_netas, ganancia
-    FROM dw.fact_pedidos
-    WHERE es_cancelado = 0
-)
-SELECT tramo_descuento,
-       COUNT(*) AS lineas,
-       ROUND(AVG(cantidad), 2) AS unidades_por_linea,
-       ROUND(SUM(ganancia) / SUM(ventas_netas) * 100, 1) AS margen_pct
-FROM tramos
-GROUP BY tramo_descuento
-ORDER BY tramo_descuento;
-
-
--- 8. Pareto: ¿qué categorías concentran el 80% de la ganancia?
-WITH ganancia_categoria AS (
-    SELECT p.categoria, SUM(f.ganancia) AS ganancia
-    FROM dw.fact_pedidos AS f
-    JOIN dw.dim_producto AS p ON p.producto_id = f.producto_id
-    WHERE f.es_cancelado = 0
-    GROUP BY p.categoria
-),
-acumulado AS (
-    -- SUM() OVER (ORDER BY ...) va sumando de la categoría más rentable hacia abajo
-    SELECT categoria,
-           ganancia,
-           SUM(ganancia) OVER (ORDER BY ganancia DESC) AS ganancia_acumulada,
-           SUM(ganancia) OVER () AS ganancia_total
-    FROM ganancia_categoria
-)
-SELECT categoria,
-       ROUND(ganancia) AS ganancia,
-       ROUND(ganancia_acumulada / ganancia_total * 100, 1) AS pct_acumulado
-FROM acumulado
-ORDER BY ganancia DESC;
+GROUP BY estado_pedido
+ORDER BY lineas DESC;
