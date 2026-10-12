@@ -77,7 +77,7 @@ GROUP BY es_tardio;
 -- Se agrupan las líneas por tramo de descuento.
 WITH tramos AS (
     SELECT CASE
-             WHEN descuento_pct = 0  THEN '1. Sin descuento'
+             WHEN descuento_pct = 0 THEN '1. Sin descuento'
              WHEN descuento_pct <= 5 THEN '2. Hasta 5%'
              WHEN descuento_pct <= 10 THEN '3. 5% a 10%'
              WHEN descuento_pct <= 20 THEN '4. 10% a 20%'
@@ -114,6 +114,6 @@ acumulado AS (
 )
 SELECT categoria,
        ROUND(ganancia) AS ganancia,
-       ROUND(ganancia_acumulada / ganancia_total * 100, 1)  AS pct_acumulado
+       ROUND(ganancia_acumulada / ganancia_total * 100, 1) AS pct_acumulado
 FROM acumulado
 ORDER BY ganancia DESC;
